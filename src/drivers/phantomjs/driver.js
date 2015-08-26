@@ -2,16 +2,27 @@
 	var
 		url,
 		originalUrl,
-		args  = [],
-		debug = false;
+		scriptDir,
+		scriptPath      = require('fs').absolute(require('system').args[0]),
+		resourceTimeout = 9000,
+		args            = [],
+		debug           = false;
 
 	try {
+		// Working directory
+		scriptDir = scriptPath.split('/'); scriptDir.pop(); scriptDir = scriptDir.join('/');
+
+		require('fs').changeWorkingDirectory(scriptDir);
+
 		require('system').args.forEach(function(arg) {
 			switch ( arg ) {
 				case '-v':
 				case '--verbose':
 					debug = true;
 
+					break;
+				case '--resource-timeout':
+					resourceTimeout = arg;
 					break;
 				default:
 					url = originalUrl = arg;
@@ -63,11 +74,7 @@
 						});
 					}
 
-					console.log(JSON.stringify({
-						url:          originalUrl,
-						finalUrl:     url,
-						applications: apps
-					}));
+					console.log(JSON.stringify({ applications: apps }));
 				}
 			},
 
@@ -94,18 +101,26 @@
 
 				page.settings.loadImages      = false;
 				page.settings.userAgent       = 'Mozilla/5.0 (compatible; Wappalyzer; +https://github.com/AliasIO/Wappalyzer)';
-				page.settings.resourceTimeout = 3000;
+				page.settings.resourceTimeout = resourceTimeout;
 
 				page.onConsoleMessage = function(message) {
 					wappalyzer.log(message);
 				};
 
 				page.onError = function(message) {
-					throw new Error(message);
+					wappalyzer.log(message);
+
+					console.log(JSON.stringify({ applications: [] }));
+
+					phantom.exit(1);
 				};
 
 				page.onResourceTimeout = function() {
-					throw new Error('Resource timeout');
+					wappalyzer.log('Resource timeout');
+
+					console.log(JSON.stringify({ applications: [] }));
+
+					phantom.exit(1);
 				};
 
 				page.onResourceReceived = function(response) {
@@ -154,18 +169,24 @@
 							headers: headers,
 							env:     environmentVars
 						});
+
+						phantom.exit(0);
 					} else {
 						wappalyzer.log('Failed to fetch page');
-					}
 
-					phantom.exit(status === 'success' ? 0 : 1);
+						console.log(JSON.stringify({ applications: [] }));
+
+						phantom.exit(1);
+					}
 				});
 			}
 		};
 
 		wappalyzer.init();
 	} catch ( e ) {
-		console.error(e);
+		wappalyzer.log(e);
+
+		console.log(JSON.stringify({ applications: [] }));
 
 		phantom.exit(1);
 	}
